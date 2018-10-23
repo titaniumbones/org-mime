@@ -363,6 +363,12 @@ CURRENT-FILE is used to calculate full path of images."
     nil)))
 
 (defun org-mime-insert-html-content (body file s opts)
+  (when org-mime-debug
+    (message "DEBUG: org-mime-insert-html-content called.")
+    (message "body  => %s" body)
+    (message "file  => %s" file)
+    ;; (message "s  => %s" s)
+    (message "opts  => %s" opts))
   (let* ((files (org-mime-extract-non-image-files))
          ;; dvipng for inline latex because MathJax doesn't work in mail
          ;; Also @see https://github.com/org-mime/org-mime/issues/16
