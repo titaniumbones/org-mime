@@ -51,6 +51,7 @@
 ;;
 ;; * mail one
 ;;   :PROPERTIES:
+
 ;;   :MAIL_SUBJECT: mail title
 ;;   :MAIL_TO: person1@gmail.com
 ;;   :MAIL_CC: person2@gmail.com
@@ -424,8 +425,8 @@ If ARG is not nil, use `org-mime-fixedwith-wrap' to wrap the exported text."
          (html-and-images
           (org-mime-replace-images
            (org-mime--export-string header-body
-                                    ;;'html
-                                    'htmlmail
+                                    'html
+                                    ;;'htmlmail
                                     (if (fboundp 'org-export--get-inbuffer-options)
                                         (org-export--get-inbuffer-options)))
            tmp-file))
@@ -556,47 +557,87 @@ The cursor ends in the TO field."
   (interactive)
   (run-hooks 'org-mime-send-buffer-hook)
   (let* ((region-p (org-region-active-p))
+         (thisbuffer (current-buffer))
          (file (buffer-file-name (current-buffer)))
-	 (keywords (if (fboundp 'org-element-map)
-		       (org-element-map (org-element-parse-buffer) 'keyword
-			 (lambda (keyword)
-			   (cons (org-element-property :key keyword)
-				 (org-element-property :value keyword))))
-		     (message "Warning: org-element-map is not available. File keywords will not work.")
-		     '()))
-	 (subject (or (cdr (assoc "MAIL_SUBJECT" keywords))
-		      (org-mime--get-buffer-title)
+	       (keywords (if (fboundp 'org-element-map)
+		                   (org-element-map (org-element-parse-buffer) 'keyword
+			                   (lambda (keyword)
+			                     (cons (org-element-property :key keyword)
+				                         (org-element-property :value keyword))))
+		                 (message "Warning: org-element-map is not available. File keywords will not work.")
+		                 '()))
+	       (subject (or (cdr (assoc "MAIL_SUBJECT" keywords))
+		                  (org-mime--get-buffer-title)
                       (if (not file) (buffer-name (buffer-base-buffer))
                         (file-name-sans-extension
                          (file-name-nondirectory file)))))
-	 (to (cdr (assoc "MAIL_TO" keywords)))
-	 (cc (cdr (assoc "MAIL_CC" keywords)))
-	 (bcc (cdr (assoc "MAIL_BCC" keywords)))
+	       (to (cdr (assoc "MAIL_TO" keywords)))
+	       (cc (cdr (assoc "MAIL_CC" keywords)))
+	       (bcc (cdr (assoc "MAIL_BCC" keywords)))
          (other-headers (cond
-			 ((and cc bcc) `((cc . ,cc) (bcc . ,bcc)))
-			 (cc `((cc . ,cc)))
-			 (bcc `((bcc . ,bcc)))
-			 (t nil)))
-	 ;; (buf (org-html-export-as-html
-	 ;;       nil nil nil t (or org-mime-export-options
-	 ;;  		 (org-export--get-inbuffer-options))))
-   ;; (body (prog1
-	 ;;     (with-current-buffer buf
-	 ;;       (format "#+BEGIN_EXPORT html\n%s\n#+END_EXPORT"
-	 ;;  	     (buffer-string)))
-	 ;;   (kill-buffer buf)))
-   (body (buffer-string)))
+			                   ((and cc bcc) `((cc . ,cc) (bcc . ,bcc)))
+			                   (cc `((cc . ,cc)))
+			                   (bcc `((bcc . ,bcc)))
+			                   (t nil)))
+	       ;; (buf (org-html-export-as-html
+	       ;;       nil nil nil t (or org-mime-export-options
+	       ;;  		 (org-export--get-inbuffer-options))))
+         ;; (body (prog1
+	       ;;     (with-current-buffer buf
+	       ;;       (format "#+BEGIN_EXPORT html\n%s\n#+END_EXPORT"
+	       ;;  	     (buffer-string)))
+	       ;;   (kill-buffer buf)))
+         (body (buffer-string))
+         ;;(orig-sent-func 'mu4e-sent-handler)
+         ;;(mu4e-sent-func 'org-mime-temp-sent-handler)
+         ;; (mu4e-sent-handler (lambda ()
+         ;;                   (funcall orig-sent-func)
+         ;;                   (switch-to-buffer thisbuffer)))
+         )
+    ;; (add-hook 'message-sent-hook (org-mime-get-parent-buffer thisbuffer) t t)
+    ;; (eval (car (read-from-string
+    ;;         (concat
+    ;;          "(advice-add 'mu4e~switch-back-to-mu4e-buffer  :after
+    ;;                         (lambda ()
+    ;;                           (switch-to-buffer
+    ;;                            (get-buffer \""
+    ;;          (buffer-name)
+    ;;          "\" ))
+    ;;                           (advice-remove 'mu4e~switch-back-to-mu4e-buffer \"om-temp-advice\"))
+    ;;                         '((name . \"om-temp-advice\")))"))))
+    ;; (advice-add 'mu4e~switch-back-to-mu4e-buffer :after
+    ;;             (eval 
+    ;;              `(lambda ()
+    ;;                 (switch-to-buffer (get-buffer ,(buffer-name) ))
+    ;;                 (advice-remove 'mu4e~switch-back-to-mu4e-buffer "om-temp-advice")
+    ;;                 '((name . "om-temp-advice")  ))))
     (if (eq org-mime-library 'mu4e)
-        (advice-add 'mu4e~switch-back-to-mu4e-buffer :after
+        (advice-add 'mu4e~switch-back-to-mu4e-buffer :override
                     `(lambda ()
                        (switch-to-buffer (get-buffer ,(buffer-name) ))
                        (advice-remove 'mu4e~switch-back-to-mu4e-buffer "om-temp-advice"))
                     '((name . "om-temp-advice"))))
+    ;; (eval (car
+    ;;    (read-from-string
+    ;;     (concat "(defun om-temp-handler (docid path)
+    ;;          (funcall 'mu4e-sent-handler docid path)
+    ;;          (switch-to-buffer (get-buffer \"" (buffer-name)  "\")))"))))
     (org-mime-compose body file to subject other-headers
-		      (or org-mime-export-options
-			  (when (fboundp 'org-export--get-inbuffer-options)
-			    (org-export--get-inbuffer-options))))
-    (message-goto-to)))
+		                  (or org-mime-export-options
+			                    (when (fboundp 'org-export--get-inbuffer-options)
+			                       (org-export--get-inbuffer-options))))
+    (message-goto-to)
+    ;; (make-local-variable 'mu4e-sent-func)
+    ;; (setq mu4e-sent-func 'om-temp-handler)
+    ;; (setq mu4e-sent-func
+    ;;       '(lambda (docid path)
+    ;;          (funcall 'mu4e-sent-handler docid path)
+    ;;          (switch-to-buffer thisbuffer)))
+    ))
+
+(defun org-mime-get-parent-buffer (parent)
+  "Try to switch to PARENT buffer instead of mu4e headers."
+  (switch-to-buffer parent))
 
 ;;;###autoload
 (defun org-mime-org-subtree-htmlize ()
@@ -674,7 +715,7 @@ The cursor is left in the TO field."
 	  (org-mime-compose body file to subject other-headers
 			    (or org-mime-export-options subtree-opts)))
         (if (eq org-mime-library 'mu4e)
-        (advice-add 'mu4e~switch-back-to-mu4e-buffer :after
+        (advice-add 'mu4e~switch-back-to-mu4e-buffer :override
                     `(lambda ()
                        (switch-to-buffer (get-buffer ,(buffer-name) ))
                        (advice-remove 'mu4e~switch-back-to-mu4e-buffer "om-temp-advice"))
@@ -682,6 +723,145 @@ The cursor is left in the TO field."
 	(message-goto-to)))))
 
 
+;;;###autoload
+(defun org-mime-org-subtree-just-send ()
+  "Create an email buffer of the current subtree.
+The buffer will contain both html and in org formats as mime
+alternatives.
+
+The following headline properties can determine the headers.
+* subtree heading
+   :PROPERTIES:
+   :MAIL_SUBJECT: mail title
+   :MAIL_TO: person1@gmail.com
+   :MAIL_CC: person2@gmail.com
+   :MAIL_BCC: person3@gmail.com
+   :END:
+
+The cursor is left in the TO field."
+  (interactive)
+  (save-excursion
+    (funcall org-mime-up-subtree-heading)
+    (cl-flet ((mp (p) (org-entry-get nil p org-mime-use-property-inheritance)))
+      (let* ((file (buffer-file-name (current-buffer)))
+             (subject (or (mp "MAIL_SUBJECT") (nth 4 (org-heading-components))))
+             (to (mp "MAIL_TO"))
+             (cc (mp "MAIL_CC"))
+             (bcc (mp "MAIL_BCC"))
+             ;; Thanks to Matt Price for improving handling of cc & bcc headers
+             (other-headers (cond
+                             ((and cc bcc) `((cc . ,cc) (bcc . ,bcc)))
+                             (cc `((cc . ,cc)))
+                             (bcc `((bcc . ,bcc)))
+                             (t nil)))
+             (subtree-opts (when (fboundp 'org-export--get-subtree-options)
+			     (org-export--get-subtree-options)))
+	     (org-export-show-temporary-export-buffer nil)
+	     (org-major-version (string-to-number
+				 (car (split-string  (org-release) "\\."))))
+	     (org-buf (save-restriction
+			(org-narrow-to-subtree)
+			(let ((org-export-preserve-breaks org-mime-preserve-breaks))
+			  (cond
+			   ((= 8 org-major-version)
+			    (org-org-export-as-org
+			     nil t nil
+			     (or org-mime-export-options subtree-opts)))
+			   ((= 9 org-major-version)
+			    (org-org-export-as-org
+			     nil t nil t
+			     (or org-mime-export-options subtree-opts)))))))
+	     
+	     ;; I wrap these bodies in export blocks because in org-mime-compose
+	     ;; they get exported again. This makes each block conditionally
+	     ;; exposed depending on the backend.
+	     (org-body (prog1
+			   (with-current-buffer org-buf
+			     ;; (format "#+BEGIN_EXPORT org\n%s\n#+END_EXPORT"
+				   ;;   (buffer-string))
+           (buffer-string))
+			 (kill-buffer org-buf)))
+	     
+	     ;; (body (concat org-body "\n" html-body))
+       (body org-body))
+	(save-restriction
+	  (org-narrow-to-subtree)
+	  (org-mime-compose-simple body file to subject other-headers
+			    (or org-mime-export-options subtree-opts)))
+        (if (eq org-mime-library 'mu4e)
+        (advice-add 'mu4e~switch-back-to-mu4e-buffer :override
+                    `(lambda ()
+                       (switch-to-buffer (get-buffer ,(buffer-name) ))
+                       (advice-remove 'mu4e~switch-back-to-mu4e-buffer "om-temp-advice"))
+                    '((name . "om-temp-advice"))))
+	(message-goto-to)))))
+
+(defun org-mime-compose-simple (body file &optional to subject headers opts)
+  "Create mail BODY in FILE with TO, SUBJECT, HEADERS and OPTS."
+  (when org-mime-debug (message "org-mime-compose called => %s %s" file opts))
+  (let* ((fmt 'html)
+	 ;; we don't want to convert org file links to html
+	 (org-html-link-org-files-as-html nil)
+	 ;; These are file links in the file that are not images.
+	 (files
+	  (if (fboundp 'org-element-map)
+	      (org-element-map (org-element-parse-buffer) 'link
+		(lambda (link)
+		  (when (and (string= (org-element-property :type link) "file")
+			     (not (string-match
+				   (cdr (assoc "file" org-html-inline-image-rules))
+				   (org-element-property :path link))))
+		    (org-element-property :path link))))
+	    (message "Warning: org-element-map is not available. File links will not be attached.")
+	    '())))
+    (unless (featurep 'message)
+      (require 'message))
+    (cl-case org-mime-library
+      (mu4e
+       (mu4e~compose-mail to subject headers nil))
+      (t
+       (message-mail to subject headers nil)))
+    (message-goto-body)
+    (insert body)
+    ;; (cl-labels ((bhook (body fmt)
+    ;;     	       (let ((hook 'org-mime-pre-html-hook))
+    ;;     		 (if (> (eval `(length ,hook)) 0)
+    ;;     		     (with-temp-buffer
+    ;;     		       (insert body)
+    ;;     		       (goto-char (point-min))
+    ;;     		       (eval `(run-hooks ',hook))
+    ;;     		       (buffer-string))
+    ;;     		   body))))
+    ;;   (let* ((org-link-file-path-type 'absolute)
+    ;;          (org-export-preserve-breaks org-mime-preserve-breaks)
+    ;;          (plain (org-mime--export-string body 'org))
+    ;;          ;; this makes the html self-containing.
+    ;;          (org-html-htmlize-output-type 'inline-css)
+    ;;          ;; this is an older variable that does not exist in org 9
+    ;;          (org-export-htmlize-output-type 'inline-css)
+    ;;          (html-and-images
+    ;;           (org-mime-replace-images
+    ;;            (org-mime--export-string (bhook body 'html) 'html opts)
+    ;;            file))
+    ;;          (images (cdr html-and-images))
+    ;;          (html (org-mime-apply-html-hook (car html-and-images))))
+    ;;     ;; If there are files that were attached, we should remove the links,
+    ;;     ;; and mark them as attachments. The links don't work in the html file.
+    ;;     (mapc (lambda (f)
+    ;;     	(setq html (replace-regexp-in-string
+    ;;     		    (format "<a href=\"%s\">%s</a>"
+    ;;     			    (regexp-quote f) (regexp-quote f))
+    ;;     		    (format "%s (attached)" (file-name-nondirectory f))
+    ;;     		    html)))
+    ;;           files)
+    ;;     (insert (org-mime-multipart plain html)
+    ;;     	(mapconcat 'identity images "\n"))
+    ;;     ;; Attach any residual files
+    ;;     (mapc (lambda (f)
+    ;;     	(when org-mime-debug (message "attaching: %s" f))
+    ;;     	(mml-attach-file f))
+    ;;           files)))
+    ))
 
 (defun org-mime-html-paragraph (paragraph contents info)
   "Transcode a PARAGRAPH element from Org to HTML.
