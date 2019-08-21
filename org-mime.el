@@ -191,13 +191,14 @@ OPTS is export options."
   (let* (rlt
          ;; Emacs 25+ prefer exporting drawer by default
          ;; obviously not acceptable in exporting to mail body
-         (org-export-with-drawers nil))
+         (org-export-with-drawers nil)
+         (org-html-klipsify-src nil))
     (when org-mime-debug (message "org-mime--export-string called => %s" opts))
     ;; we won't export title from org file anyway
     (if opts (setq opts (plist-put opts 'title nil)))
     (if (fboundp 'org-export-string-as)
         ;; emacs24.4+
-        (setq rlt (org-export-string-as s fmt t (or org-mime-export-options opts)))
+        (setq rlt (org-export-string-as s fmt nil (or org-mime-export-options opts)))
       ;; emacs 24.3
       (setq rlt (org-export-string s (symbol-name fmt)))
       ;; manually remove the drawers, see https://github.com/org-mime/org-mime/issues/3
